@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainf*ckインタープリタ（ビジュアル）</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Courier New', monospace; }
+  .cell { transition: all 0.15s ease; }
+  .cell-active { background: #6366f1 !important; transform: scale(1.1); }
+  .cell-nonzero { background: #374151; }
+  .inst-active { background: #f59e0b; color: #000; }
+  #code-display span { display: inline-block; padding: 1px 2px; border-radius: 2px; }
+  .speed-label { min-width: 60px; }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<header class="bg-gray-900 border-b border-gray-700 px-4 py-3">
+  <div class="max-w-5xl mx-auto flex items-center gap-3">
+    <span class="text-2xl">🧠</span>
+    <div>
+      <h1 class="text-xl font-bold text-indigo-400">Brainf*ck インタープリタ（ビジュアル）</h1>
+      <p class="text-xs text-gray-400">難解プログラミング言語をステップ実行・メモリ可視化</p>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-4 py-5 space-y-4">
+
+  <div class="grid md:grid-cols-4 gap-3">
+    <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 text-center">
+      <div class="text-2xl font-bold text-indigo-400" id="stat-ip">0</div>
+      <div class="text-xs text-gray-400 mt-1">命令ポインタ (IP)</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 text-center">
+      <div class="text-2xl font-bold text-green-400" id="stat-dp">0</div>
+      <div class="text-xs text-gray-400 mt-1">データポインタ (DP)</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 text-center">
+      <div class="text-2xl font-bold text-yellow-400" id="stat-steps">0</div>
+      <div class="text-xs text-gray-400 mt-1">実行ステップ数</div>
+    </div>
+    <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 text-center">
+      <div class="text-2xl font-bold text-pink-400" id="stat-status">待機中</div>
+      <div class="text-xs text-gray-400 mt-1">状態</div>
+    </div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <label class="text-sm font-medium text-gray-300">プログラムコード</label>
+      <div class="flex gap-2">
+        <select id="sample-select" onchange="loadSample()" class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500" aria-label="サンプルプログラムを選択">
+          <option value="">サンプルを選ぶ</option>
+          <option value="hello">Hello World</option>
+          <option value="fib">フィボナッチ数列</option>
+          <option value="add">加算（2+3）</option>
+          <option value="reverse">文字列逆順</option>
+          <option value="cat">猫プログラム</option>
+        </select>
+      </div>
+    </div>
+    <textarea id="code-input" class="w-full h-24 bg-gray-800 border border-gray-600 rounded-lg p-3 text-green-300 text-sm focus:outline-none focus:border-indigo-500 resize-y"
+      aria-label="Brainfuckコード入力" placeholder="+++++++[>++++++++++<-]>+++++."></textarea>
+    <div>
+      <label class="text-sm font-medium text-gray-300 block mb-1">入力データ（ASCII）</label>
+      <input id="input-data" type="text" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-yellow-300 text-sm focus:outline-none focus:border-indigo-500"
+        aria-label="プログラムへの入力データ" placeholder="（入力が必要な場合に入力）">
+    </div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4 space-y-3">
+    <div class="text-sm font-medium text-gray-300">命令実行ビュー</div>
+    <div id="code-display" class="bg-gray-800 rounded-lg p-3 text-sm min-h-[3rem] overflow-x-auto whitespace-pre-wrap break-all leading-relaxed"></div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <div class="text-sm font-medium text-gray-300">メモリセル（表示: 先頭30セル）</div>
+      <div class="text-xs text-gray-500">緑=現在位置</div>
+    </div>
+    <div id="memory-cells" class="flex flex-wrap gap-1"></div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4 space-y-3">
+    <div class="text-sm font-medium text-gray-300">出力</div>
+    <pre id="output-area" class="bg-gray-800 rounded-lg p-3 text-cyan-300 text-sm min-h-[3rem] whitespace-pre-wrap"></pre>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4">
+    <div class="flex flex-wrap gap-2 items-center">
+      <button onclick="startRun()" id="btn-run" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" aria-label="プログラムを実行">
+        ▶ 実行
+      </button>
+      <button onclick="stepOnce()" id="btn-step" class="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-400" aria-label="1ステップ実行">
+        ⏭ 1ステップ
+      </button>
+      <button onclick="pauseRun()" id="btn-pause" class="bg-yellow-700 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 hidden" aria-label="一時停止">
+        ⏸ 一時停止
+      </button>
+      <button onclick="resetAll()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label="リセット">
+        ↺ リセット
+      </button>
+      <div class="flex items-center gap-2 ml-2">
+        <label class="text-xs text-gray-400 speed-label" for="speed-range">速度: <span id="speed-val">中</span></label>
+        <input type="range" id="speed-range" min="1" max="5" value="3" class="w-24 accent-indigo-500 focus:outline-none" aria-label="実行速度" oninput="updateSpeed()">
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-gray-400" for="max-steps-input">最大ステップ:</label>
+        <input type="number" id="max-steps-input" value="100000" min="100" max="10000000" class="w-28 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500" aria-label="最大実行ステップ数">
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-700 p-4">
+    <div class="text-sm font-medium text-gray-300 mb-2">命令セット リファレンス</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">&gt;</span> <span class="text-gray-300">DPを右へ+1</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">&lt;</span> <span class="text-gray-300">DPを左へ-1</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">+</span> <span class="text-gray-300">現在セル+1</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">-</span> <span class="text-gray-300">現在セル-1</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">.</span> <span class="text-gray-300">現在セルを出力</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">,</span> <span class="text-gray-300">入力を読込</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">[</span> <span class="text-gray-300">0なら]にジャンプ</span></div>
+      <div class="bg-gray-800 rounded p-2"><span class="text-yellow-400 font-bold">]</span> <span class="text-gray-300">0でなければ[へ</span></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const samples = {
+  hello: `++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.`,
+  fib: `>++++++++++>+>+[[+++++[>++++++++<-]>.<++++++[>--------<-]+<<<]>.>>[[-]<[>+<-]>>[<<+>+>-]<[>+<-[>+<-[>+<-[>+<-[>+<-[>+<-[>+<-[>+<-[>+<-[[-]>--++++++[-<++++++++>]<.<<<.>>>]<-]]]]]]]]]<!+d>]<<]`,
+  add: `+++   セル0=3
+>++   セル1=2
+[<+>-] セル1を0にしながらセル0に加算
+<.    セル0を出力（ASCII 5= ENQ…実際はセル値）`,
+  reverse: `>,[[>>,]<<[.[-]<<]]`,
+  cat: `,[.,]`
+};
+
+const CELL_COUNT = 30000;
+let memory = new Uint8Array(CELL_COUNT);
+let dp = 0, ip = 0, steps = 0;
+let code = '', instructions = [];
+let inputBuffer = [], inputPos = 0;
+let output = '';
+let running = false, paused = false;
+let runInterval = null;
+let maxSteps = 100000;
+const speedMs = [500, 200, 80, 20, 1];
+let currentSpeed = 2;
+
+function escapeHTML(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function extractInstructions(src) {
+  return src.split('').filter(c => '><+-.,[]'.includes(c));
+}
+
+function buildBracketMap(insts) {
+  const map = {}, stack = [];
+  for (let i = 0; i < insts.length; i++) {
+    if (insts[i] === '[') { stack.push(i); }
+    else if (insts[i] === ']') {
+      const j = stack.pop();
+      if (j !== undefined) { map[j] = i; map[i] = j; }
+    }
+  }
+  return map;
+}
+
+let bracketMap = {};
+
+function initMachine() {
+  const rawCode = document.getElementById('code-input').value;
+  code = rawCode;
+  instructions = extractInstructions(rawCode);
+  bracketMap = buildBracketMap(instructions);
+  memory = new Uint8Array(CELL_COUNT);
+  dp = 0; ip = 0; steps = 0; output = '';
+  const inp = document.getElementById('input-data').value;
+  inputBuffer = inp.split('').map(c => c.charCodeAt(0));
+  inputPos = 0;
+  maxSteps = parseInt(document.getElementById('max-steps-input').value) || 100000;
+  renderAll();
+}
+
+function stepExec() {
+  if (ip >= instructions.length) return false;
+  const inst = instructions[ip];
+  switch(inst) {
+    case '>': dp = (dp + 1) % CELL_COUNT; break;
+    case '<': dp = (dp - 1 + CELL_COUNT) % CELL_COUNT; break;
+    case '+': memory[dp] = (memory[dp] + 1) & 0xFF; break;
+    case '-': memory[dp] = (memory[dp] - 1 + 256) & 0xFF; break;
+    case '.': output += String.fromCharCode(memory[dp]); break;
+    case ',': memory[dp] = inputPos < inputBuffer.length ? inputBuffer[inputPos++] : 0; break;
+    case '[': if (memory[dp] === 0) ip = bracketMap[ip]; break;
+    case ']': if (memory[dp] !== 0) ip = bracketMap[ip]; break;
+  }
+  ip++;
+  steps++;
+  return true;
+}
+
+function renderAll() {
+  document.getElementById('stat-ip').textContent = ip;
+  document.getElementById('stat-dp').textContent = dp;
+  document.getElementById('stat-steps').textContent = steps;
+  renderCodeDisplay();
+  renderMemory();
+  document.getElementById('output-area').textContent = output;
+}
+
+function renderCodeDisplay() {
+  const el = document.getElementById('code-display');
+  el.innerHTML = '';
+  const validInsts = '><+-.,[]';
+  let idx = 0;
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    const span = document.createElement('span');
+    span.textContent = ch;
+    if (validInsts.includes(ch)) {
+      if (idx === ip) {
+        span.classList.add('inst-active');
+      }
+      span.style.color = getInstColor(ch);
+      idx++;
+    } else {
+      span.style.color = '#4b5563';
+    }
+    el.appendChild(span);
+  }
+}
+
+function getInstColor(c) {
+  const colors = {'>':'#60a5fa','<':'#93c5fd','+':'#86efac','-':'#fca5a5','.':'#fcd34d',',':'#c084fc','[':'#fb923c',']':'#fb923c'};
+  return colors[c] || '#9ca3af';
+}
+
+function renderMemory() {
+  const el = document.getElementById('memory-cells');
+  el.innerHTML = '';
+  const show = Math.min(30, CELL_COUNT);
+  for (let i = 0; i < show; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell w-14 rounded-md p-1 text-center border';
+    if (i === dp) {
+      cell.className += ' cell-active border-indigo-400 text-white';
+    } else if (memory[i] !== 0) {
+      cell.className += ' cell-nonzero border-gray-600 text-gray-200';
+    } else {
+      cell.className += ' bg-gray-900 border-gray-700 text-gray-600';
+    }
+    const val = document.createElement('div');
+    val.className = 'text-xs font-bold';
+    val.textContent = memory[i];
+    const idx = document.createElement('div');
+    idx.className = 'text-xs opacity-50';
+    idx.textContent = i;
+    cell.appendChild(val);
+    cell.appendChild(idx);
+    el.appendChild(cell);
+  }
+}
+
+function startRun() {
+  if (running && !paused) return;
+  if (!running) initMachine();
+  running = true; paused = false;
+  document.getElementById('btn-pause').classList.remove('hidden');
+  document.getElementById('btn-run').classList.add('hidden');
+  document.getElementById('stat-status').textContent = '実行中';
+  runLoop();
+}
+
+function runLoop() {
+  if (!running || paused) return;
+  const delay = speedMs[currentSpeed];
+  if (delay <= 1) {
+    let batch = 1000;
+    while (batch-- > 0 && running && !paused) {
+      if (!stepExec() || steps >= maxSteps) { finishRun(); return; }
+    }
+    renderAll();
+    if (running && !paused) runInterval = setTimeout(runLoop, 0);
+  } else {
+    if (!stepExec() || steps >= maxSteps) { finishRun(); return; }
+    renderAll();
+    if (running && !paused) runInterval = setTimeout(runLoop, delay);
+  }
+}
+
+function finishRun() {
+  running = false; paused = false;
+  clearTimeout(runInterval);
+  document.getElementById('btn-pause').classList.add('hidden');
+  document.getElementById('btn-run').classList.remove('hidden');
+  document.getElementById('stat-status').textContent = steps >= maxSteps ? '上限到達' : '完了';
+  renderAll();
+}
+
+function pauseRun() {
+  paused = !paused;
+  document.getElementById('btn-pause').textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  document.getElementById('stat-status').textContent = paused ? '一時停止' : '実行中';
+  if (!paused) runLoop();
+}
+
+function stepOnce() {
+  if (!running) { initMachine(); running = true; paused = true; }
+  if (!stepExec() || steps >= maxSteps) { finishRun(); return; }
+  renderAll();
+}
+
+function resetAll() {
+  running = false; paused = false;
+  clearTimeout(runInterval);
+  document.getElementById('btn-pause').classList.add('hidden');
+  document.getElementById('btn-run').classList.remove('hidden');
+  document.getElementById('stat-status').textContent = '待機中';
+  memory = new Uint8Array(CELL_COUNT);
+  dp = 0; ip = 0; steps = 0; output = '';
+  renderAll();
+}
+
+function loadSample() {
+  const val = document.getElementById('sample-select').value;
+  if (val && samples[val]) {
+    document.getElementById('code-input').value = samples[val];
+    resetAll();
+  }
+}
+
+function updateSpeed() {
+  const v = parseInt(document.getElementById('speed-range').value);
+  currentSpeed = v - 1;
+  const labels = ['最遅','遅','中','速','最速'];
+  document.getElementById('speed-val').textContent = labels[currentSpeed];
+}
+
+initMachine();
+</script>
+</body>
+</html>
